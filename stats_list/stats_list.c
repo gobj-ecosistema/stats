@@ -194,7 +194,7 @@ static error_t parse_opt (int key, char *arg, struct argp_state *state)
 PRIVATE BOOL list_group_cb(
     void *user_data,
     wd_found_type type,     // type found
-    const char *fullpath,   // directory+filename found
+    char *fullpath,         // directory+filename found
     const char *directory,  // directory of found filename
     const char *name,       // name of type found
     int level,              // level of tree where file found
@@ -523,7 +523,7 @@ PRIVATE int list_stats(
 PRIVATE BOOL list_recursive_group_cb(
     void *user_data,
     wd_found_type type,     // type found
-    const char *fullpath,   // directory+filename found
+    char *fullpath,         // directory+filename found
     const char *directory,  // directory of found filename
     const char *name,       // name of type found
     int level,              // level of tree where file found
