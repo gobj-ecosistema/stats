@@ -196,7 +196,7 @@ PRIVATE BOOL list_group_cb(
     wd_found_type type,     // type found
     char *fullpath,         // directory+filename found
     const char *directory,  // directory of found filename
-    const char *name,       // name of type found
+    char *name,       // name of type found
     int level,              // level of tree where file found
     int index               // index of file inside of directory, relative to 0
 )
@@ -525,7 +525,7 @@ PRIVATE BOOL list_recursive_group_cb(
     wd_found_type type,     // type found
     char *fullpath,         // directory+filename found
     const char *directory,  // directory of found filename
-    const char *name,       // name of type found
+    char *name,             // name of type found
     int level,              // level of tree where file found
     int index               // index of file inside of directory, relative to 0
 )
