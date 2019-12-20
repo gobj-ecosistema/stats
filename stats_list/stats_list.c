@@ -32,14 +32,6 @@
 /***************************************************************************
  *              Structures
  ***************************************************************************/
-typedef struct {
-    char path[256];
-    char group[256];
-    json_t *match_cond;
-    int verbose;
-} list_params_t;
-
-
 /*
  *  Used by main to communicate with parse_opt.
  */
@@ -62,6 +54,12 @@ struct arguments
     char *metric;
     char *units;
 };
+
+typedef struct {
+    char path_simple_stats[PATH_MAX];
+    struct arguments *arguments;
+    json_t *match_cond;
+} list_params_t;
 
 /***************************************************************************
  *              Prototypes
@@ -92,6 +90,7 @@ static struct argp_option options[] = {
 {0,                     0,      0,                  0,      "Database",         2},
 {"path",                'a',    "PATH",             0,      "Path.",            2},
 {"group",               'b',    "GROUP",            0,      "Group.",           2},
+{"metric",              'c',    "METRIC",           0,      "Metric.",          2},
 {"recursive",           'r',    0,                  0,      "List recursively.",  2},
 
 {0,                     0,      0,                  0,      "Presentation",     3},
@@ -104,7 +103,6 @@ static struct argp_option options[] = {
 {"limits",              3,      0,                  0,      "Show limits",      5},
 
 {"variable",            21,     "VARIABLE",         0,      "Variable.",        9},
-{"metric",              22,     "METRIC",           0,      "Metric.",          9},
 {"units",               23,     "UNITS",            0,      "Units (SEC, MIN, HOUR, MDAY, MON, YEAR, WDAY, YDAY, CENT).",          9},
 
 {0}
@@ -137,6 +135,9 @@ static error_t parse_opt (int key, char *arg, struct argp_state *state)
     case 'b':
         arguments->group= arg;
         break;
+    case 'c':
+        arguments->metric = arg;
+        break;
     case 'r':
         arguments->recursive = 1;
         break;
@@ -160,9 +161,6 @@ static error_t parse_opt (int key, char *arg, struct argp_state *state)
     case 21:
         arguments->variable = arg;
         break;
-    case 22:
-        arguments->metric = arg;
-        break;
     case 23:
         arguments->units = arg;
         break;
@@ -185,42 +183,6 @@ static error_t parse_opt (int key, char *arg, struct argp_state *state)
     default:
         return ARGP_ERR_UNKNOWN;
     }
-    return 0;
-}
-
-/***************************************************************************
- *
- ***************************************************************************/
-PRIVATE BOOL list_group_cb(
-    void *user_data,
-    wd_found_type type,     // type found
-    char *fullpath,         // directory+filename found
-    const char *directory,  // directory of found filename
-    char *name,       // name of type found
-    int level,              // level of tree where file found
-    int index               // index of file inside of directory, relative to 0
-)
-{
-    char *p = strrchr(directory, '/');
-    if(p) {
-        printf("  %s\n", p+1);
-    } else {
-        printf("  %s\n", directory);
-    }
-    return TRUE; // to continue
-}
-
-PRIVATE int list_groups(const char *path)
-{
-    printf("Groups found:\n");
-    walk_dir_tree(
-        path,
-        "__simple_stats__.json",
-        WD_RECURSIVE|WD_MATCH_REGULAR_FILE,
-        list_group_cb,
-        0
-    );
-    printf("\n");
     return 0;
 }
 
@@ -307,6 +269,7 @@ PRIVATE void print_limits(json_t *jn_metric)
 PRIVATE int _list_stats(
     char *path,
     char *group_name,
+    char *metric_name_,
     json_t *match_cond,
     int verbose)
 {
@@ -352,7 +315,7 @@ PRIVATE int _list_stats(
     uint64_t from_t = kw_get_int(match_cond, "from_t", 0, KW_WILD_NUMBER);
     uint64_t to_t = kw_get_int(match_cond, "to_t", 0, KW_WILD_NUMBER);
     const char *variable = kw_get_str(match_cond, "variable", "", 0);
-    const char *metric_name = kw_get_str(match_cond, "metric", "", 0);
+    const char *metric_name = kw_get_str(match_cond, "metric", metric_name_, 0);
     const char *units = kw_get_str(match_cond, "units", "", 0);
 
     if(empty_string(variable)) {
@@ -475,52 +438,131 @@ PRIVATE int _list_stats(
 /***************************************************************************
  *
  ***************************************************************************/
-PRIVATE int list_stats(
-    char *path,
-    char *group,
-    json_t *match_cond,
-    int verbose)
+PRIVATE BOOL list_metric_cb(
+    void *user_data,
+    wd_found_type type,     // type found
+    char *fullpath,         // directory+filename found
+    const char *directory,  // directory of found filename
+    char *name,             // dname[255]
+    int level,              // level of tree where file found
+    int index               // index of file inside of directory, relative to 0
+)
 {
-    /*
-     *  Check if path contains all
-     */
-    char bftemp[PATH_MAX];
-    snprintf(bftemp, sizeof(bftemp), "%s%s%s",
-        path,
-        (path[strlen(path)-1]=='/')?"":"/",
-        "__simple_stats__.json"
-    );
-    if(is_regular_file(bftemp)) {
-        pop_last_segment(bftemp); // pop __simple_stats__.json
-        group = pop_last_segment(bftemp);
-        if(!empty_string(group)) {
-            return _list_stats(
-                bftemp,
-                group,
-                match_cond,
-                verbose
-            );
-        }
+    pop_last_segment(fullpath); // remove __simple_stats__.json
+    char *metric = pop_last_segment(fullpath);
+    if(level>2) {
+        char *group = pop_last_segment(fullpath);
+        printf("  Group  ==> '%s'\n", group);
     }
+    printf("  Metric ==> '%s'\n", metric);
 
-    if(empty_string(group)) {
-        fprintf(stderr, "What Stats Group?\n\n");
-        list_groups(path);
+    return TRUE; // to continue
+}
+
+PRIVATE int list_metrics(const char *path)
+{
+    walk_dir_tree(
+        path,
+        "__metric__.json",
+        WD_RECURSIVE|WD_MATCH_REGULAR_FILE,
+        list_metric_cb,
+        0
+    );
+    printf("\n");
+    return 0;
+}
+
+PRIVATE BOOL list_db_cb(
+    void *user_data,
+    wd_found_type type,     // type found
+    char *fullpath,         // directory+filename found
+    const char *directory,  // directory of found filename
+    char *name,             // dname[255]
+    int level,              // level of tree where file found
+    int index               // index of file inside of directory, relative to 0
+)
+{
+    pop_last_segment(fullpath); // remove __simple_stats__.json
+    printf("Stats database ==> '%s'\n", fullpath);
+    list_metrics(fullpath);
+
+    return TRUE; // to continue
+}
+
+PRIVATE int list_databases(const char *path)
+{
+    walk_dir_tree(
+        path,
+        "__simple_stats__.json",
+        WD_RECURSIVE|WD_MATCH_REGULAR_FILE,
+        list_db_cb,
+        0
+    );
+    printf("\n");
+    return 0;
+}
+
+/***************************************************************************
+ *
+ ***************************************************************************/
+PRIVATE int list_stats(list_params_t *list_params)
+{
+    if(!file_exists(list_params->arguments->path, "__simple_stats__.json")) {
+        if(!is_directory(list_params->arguments->path)) {
+            fprintf(stderr, "Path not found: '%s'\n\n", list_params->arguments->path);
+            exit(-1);
+        }
+        fprintf(stderr, "What Stats Database?\n\n");
+        list_databases(list_params->arguments->path);
         exit(-1);
     }
 
+    snprintf(list_params->path_simple_stats, sizeof(list_params->path_simple_stats),
+        "%s", list_params->arguments->path
+    );
+    pop_last_segment(list_params->path_simple_stats); // remove __simple_stats__.json
+
+    char temp[PATH_MAX];
+    build_path2(temp, sizeof(temp), list_params->path_simple_stats, "");
+
+    if(!empty_string(list_params->arguments->group)) {
+        if(!subdir_exists(list_params->path_simple_stats, list_params->arguments->group)) {
+            fprintf(stderr, "Group not found: '%s'\n\n", list_params->arguments->group);
+            exit(-1);
+        }
+        build_path2(temp, sizeof(temp), list_params->path_simple_stats, list_params->arguments->group);
+    }
+
+    if(!empty_string(list_params->arguments->metric)) {
+        if(!subdir_exists(temp, list_params->arguments->metric)) {
+            fprintf(stderr, "Metric not found: '%s'\n\n", list_params->arguments->metric);
+            exit(-1);
+        }
+        snprintf(
+            temp + strlen(temp),
+            sizeof(temp) - strlen(temp),
+            "/%s/__metric__.json",
+            list_params->arguments->metric
+        );
+        if(!is_regular_file(temp)) {
+            fprintf(stderr, "Metric not found: '%s'\n\n", list_params->arguments->metric);
+            exit(-1);
+        }
+    }
+
     return _list_stats(
-        path,
-        group,
-        match_cond,
-        verbose
+        list_params->path_simple_stats,
+        list_params->arguments->group,
+        list_params->arguments->metric,
+        list_params->match_cond,
+        list_params->arguments->verbose
     );
 }
 
 /***************************************************************************
  *
  ***************************************************************************/
-PRIVATE BOOL list_recursive_group_cb(
+PRIVATE BOOL list_recursive_groups_cb(
     void *user_data,
     wd_found_type type,     // type found
     char *fullpath,         // directory+filename found
@@ -531,26 +573,22 @@ PRIVATE BOOL list_recursive_group_cb(
 )
 {
     list_params_t *list_params = user_data;
-    list_params_t list_params2 = *list_params;
 
-    char *p = strrchr(directory, '/');
-    if(p) {
-        snprintf(list_params2.group, sizeof(list_params2.group), "%s", p+1);
-    } else {
-        snprintf(list_params2.group, sizeof(list_params2.group), "%s", directory);
+    pop_last_segment(fullpath); // remove __metric__.json
+    char *metric_name = pop_last_segment(fullpath);
+    if(empty_string(list_params->arguments->group)) {
+        if(level > 2) {
+            list_params->arguments->group = pop_last_segment(fullpath);
+        }
     }
 
-    printf("\n====> Stats Group: %s\n", list_params2.group);
-
-    partial_counter = 0;
-    JSON_INCREF(list_params2.match_cond);
     _list_stats(
-        list_params2.path,
-        list_params2.group,
-        list_params2.match_cond,
-        list_params2.verbose
+        list_params->path_simple_stats,
+        list_params->arguments->group,
+        metric_name,
+        list_params->match_cond,
+        list_params->arguments->verbose
     );
-    //printf("\n====> %s: %d records\n", list_params2.group, partial_counter);
 
     return TRUE; // to continue
 }
@@ -558,47 +596,50 @@ PRIVATE BOOL list_recursive_group_cb(
 PRIVATE int list_recursive_groups(list_params_t *list_params)
 {
     walk_dir_tree(
-        list_params->path,
-        ".*\\__simple_stats__\\.json",
+        list_params->arguments->path,
+        ".*\\__metric__\\.json",
         WD_RECURSIVE|WD_MATCH_REGULAR_FILE,
-        list_recursive_group_cb,
+        list_recursive_groups_cb,
         list_params
     );
-    JSON_DECREF(list_params->match_cond);
 
     return 0;
 }
 
-
 /***************************************************************************
  *
  ***************************************************************************/
-PRIVATE int list_recursive(
-    char *path,
-    char *group,
-    json_t *match_cond,
-    int verbose)
+PRIVATE BOOL list_recursive_cb(
+    void *user_data,
+    wd_found_type type,     // type found
+    char *fullpath,         // directory+filename found
+    const char *directory,  // directory of found filename
+    char *name,             // name of type found
+    int level,              // level of tree where file found
+    int index               // index of file inside of directory, relative to 0
+)
 {
-    list_params_t list_params;
-    memset(&list_params, 0, sizeof(list_params));
+    list_params_t *list_params = user_data;
 
-    snprintf(list_params.path, sizeof(list_params.path), "%s", path);
-    if(group) {
-        snprintf(list_params.group, sizeof(list_params.group), "%s", group);
-    }
-    list_params.match_cond = match_cond;
-    list_params.verbose = verbose;
+    pop_last_segment(fullpath); // remove __simple_stats__.json
+    list_params->arguments->path = fullpath;
+    snprintf(list_params->path_simple_stats, sizeof(list_params->path_simple_stats), "%s", fullpath);
+    list_recursive_groups(list_params);
 
-    if(empty_string(group)) {
-        return list_recursive_groups(&list_params);
-    }
+    return TRUE; // to continue
+}
 
-    return list_stats(
-        path,
-        group,
-        match_cond,
-        verbose
+PRIVATE int list_recursive(list_params_t *list_params)
+{
+    walk_dir_tree(
+        list_params->arguments->path,
+        ".*\\__simple_stats__\\.json",
+        WD_RECURSIVE|WD_MATCH_REGULAR_FILE,
+        list_recursive_cb,
+        list_params
     );
+
+    return 0;
 }
 
 /***************************************************************************
@@ -673,13 +714,6 @@ int main(int argc, char *argv[])
             json_string(arguments.variable)
         );
     }
-    if(arguments.metric) {
-        json_object_set_new(
-            match_cond,
-            "metric",
-            json_string(arguments.metric)
-        );
-    }
     if(arguments.units) {
         json_object_set_new(
             match_cond,
@@ -695,6 +729,11 @@ int main(int argc, char *argv[])
         );
     }
 
+    if(json_object_size(match_cond)>0) {
+    } else {
+        JSON_DECREF(match_cond);
+    }
+
     /*
      *  Do your work
      */
@@ -702,21 +741,19 @@ int main(int argc, char *argv[])
         fprintf(stderr, "What Statistics path?\n");
         exit(-1);
     }
+
+    list_params_t list_params;
+    memset(&list_params, 0, sizeof(list_params));
+    list_params.arguments = &arguments;
+    list_params.match_cond = match_cond;
+
     if(arguments.recursive) {
-        list_recursive(
-            arguments.path,
-            arguments.group,
-            match_cond,
-            arguments.verbose
-        );
+        list_recursive(&list_params);
     } else {
-        list_stats(
-            arguments.path,
-            arguments.group,
-            match_cond,
-            arguments.verbose
-        );
+        list_stats(&list_params);
     }
+
+    JSON_DECREF(match_cond);
 
     gbmem_shutdown();
     log_end();
