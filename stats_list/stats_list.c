@@ -278,7 +278,7 @@ PRIVATE int _list_stats(
      *-------------------------------*/
     json_t *jn_stats = json_pack("{s:s, s:s}",
         "path", path,
-        "group", group_name
+        "group", group_name?group_name:""
     );
     json_t * stats = rstats_open(jn_stats);
     if(!stats) {
