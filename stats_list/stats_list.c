@@ -44,6 +44,7 @@ struct arguments
     char *path;
     char *group;
     int recursive;
+    int raw;
     int verbose;
     int limits;
 
@@ -90,11 +91,11 @@ static struct argp_option options[] = {
 {0,                     0,      0,                  0,      "Database",         2},
 {"path",                'a',    "PATH",             0,      "Path.",            2},
 {"group",               'b',    "GROUP",            0,      "Group.",           2},
-{"metric",              'c',    "METRIC",           0,      "Metric.",          2},
-{"recursive",           'r',    0,                  0,      "List recursively.",  2},
+{"recursive",           'r',    0,                  0,      "List recursively.",2},
+{"raw",                 10,     0,                  0,      "List rawly.",      2},
 
 {0,                     0,      0,                  0,      "Presentation",     3},
-{"verbose",             'l',    "LEVEL",            0,      "Verbose level ()", 3},
+{"verbose",             'l',    0,                  0,      "Verbose",          3},
 
 {0,                     0,      0,                  0,      "Search conditions", 4},
 {"from-t",              1,      "TIME",             0,      "From time.",       4},
@@ -103,7 +104,8 @@ static struct argp_option options[] = {
 {"limits",              3,      0,                  0,      "Show limits",      5},
 
 {"variable",            21,     "VARIABLE",         0,      "Variable.",        9},
-{"units",               23,     "UNITS",            0,      "Units (SEC, MIN, HOUR, MDAY, MON, YEAR, WDAY, YDAY, CENT).",          9},
+{"metric",              22,     "METRIC",           0,      "Metric.",          10},
+{"units",               23,     "UNITS",            0,      "Units (SEC, MIN, HOUR, MDAY, MON, YEAR, WDAY, YDAY, CENT).",          11},
 
 {0}
 };
@@ -135,16 +137,14 @@ static error_t parse_opt (int key, char *arg, struct argp_state *state)
     case 'b':
         arguments->group= arg;
         break;
-    case 'c':
-        arguments->metric = arg;
-        break;
     case 'r':
         arguments->recursive = 1;
         break;
+    case 10:
+        arguments->raw = 1;
+        break;
     case 'l':
-        if(arg) {
-            arguments->verbose = atoi(arg);
-        }
+        arguments->verbose = 1;
         break;
 
     case 1: // from_t
@@ -160,6 +160,9 @@ static error_t parse_opt (int key, char *arg, struct argp_state *state)
 
     case 21:
         arguments->variable = arg;
+        break;
+    case 22:
+        arguments->metric = arg;
         break;
     case 23:
         arguments->units = arg;
@@ -271,19 +274,23 @@ PRIVATE int _list_stats(
     char *group_name,
     char *metric_name_,
     json_t *match_cond,
-    int verbose)
+    int verbose
+)
 {
     /*-------------------------------*
      *  Open group
      *-------------------------------*/
     json_t *jn_stats = json_pack("{s:s, s:s}",
         "path", path,
-        "group", group_name?group_name:""
+        "groups", group_name?group_name:""
     );
     json_t * stats = rstats_open(jn_stats);
     if(!stats) {
         fprintf(stderr, "Can't open stats %s/%s\n\n", path, group_name);
         exit(-1);
+    }
+    if(verbose) {
+        print_json(stats);
     }
 
     json_t *metrics = rstats_metrics(stats);
@@ -307,7 +314,6 @@ PRIVATE int _list_stats(
          *  Free resources
          */
         json_decref(metrics);
-        JSON_DECREF(match_cond);
         rstats_close(stats);
         return -1;
     }
@@ -327,7 +333,6 @@ PRIVATE int _list_stats(
          *  Free resources
          */
         json_decref(metrics);
-        JSON_DECREF(match_cond);
         rstats_close(stats);
         return -1;
     }
@@ -342,7 +347,6 @@ PRIVATE int _list_stats(
          *  Free resources
          */
         json_decref(metrics);
-        JSON_DECREF(match_cond);
         rstats_close(stats);
         return -1;
     }
@@ -359,7 +363,6 @@ PRIVATE int _list_stats(
              *  Free resources
              */
             json_decref(metrics);
-            JSON_DECREF(match_cond);
             rstats_close(stats);
             return -1;
         }
@@ -376,7 +379,6 @@ PRIVATE int _list_stats(
             *  Free resources
             */
             json_decref(metrics);
-            JSON_DECREF(match_cond);
             rstats_close(stats);
             return -1;
         }
@@ -391,7 +393,6 @@ PRIVATE int _list_stats(
              *  Free resources
              */
             json_decref(metrics);
-            JSON_DECREF(match_cond);
             rstats_close(stats);
             return -1;
         }
@@ -406,7 +407,6 @@ PRIVATE int _list_stats(
          *  Free resources
          */
         json_decref(metrics);
-        JSON_DECREF(match_cond);
         rstats_close(stats);
         return -1;
     }
@@ -429,7 +429,6 @@ PRIVATE int _list_stats(
      *  Free resources
      */
     json_decref(metrics);
-    JSON_DECREF(match_cond);
     rstats_close(stats);
 
     return 0;
@@ -463,7 +462,7 @@ PRIVATE int list_metrics(const char *path)
 {
     walk_dir_tree(
         path,
-        "__metric__.json",
+        "__metric__\\.json",
         WD_RECURSIVE|WD_MATCH_REGULAR_FILE,
         list_metric_cb,
         0
@@ -493,7 +492,7 @@ PRIVATE int list_databases(const char *path)
 {
     walk_dir_tree(
         path,
-        "__simple_stats__.json",
+        "__simple_stats__\\.json",
         WD_RECURSIVE|WD_MATCH_REGULAR_FILE,
         list_db_cb,
         0
@@ -747,7 +746,15 @@ int main(int argc, char *argv[])
     list_params.arguments = &arguments;
     list_params.match_cond = match_cond;
 
-    if(arguments.recursive) {
+    if(arguments.raw) {
+        _list_stats(
+            arguments.path,
+            arguments.group,
+            arguments.metric,
+            match_cond,
+            arguments.verbose
+        );
+    } else if(arguments.recursive) {
         list_recursive(&list_params);
     } else {
         list_stats(&list_params);
