@@ -293,15 +293,15 @@ PRIVATE int _list_stats(
         print_json(stats);
     }
 
-    json_t *metrics = rstats_metrics(stats);
+    json_t *variables = rstats_variables(stats);
     if(verbose) {
-        print_json(metrics);
+        print_json(variables);
     }
 
     if(kw_get_bool(match_cond, "show_limits", 0, 0)) {
         const char *var;
         json_t *jn_v;
-        json_object_foreach(metrics, var, jn_v) {
+        json_object_foreach(variables, var, jn_v) {
             printf("   Variable: %s\n", var);
             const char *metr;
             json_t *jn_metr;
@@ -313,7 +313,7 @@ PRIVATE int _list_stats(
         /*
          *  Free resources
          */
-        json_decref(metrics);
+        JSON_DECREF(variables);
         rstats_close(stats);
         return -1;
     }
@@ -327,33 +327,33 @@ PRIVATE int _list_stats(
     if(empty_string(variable)) {
         printf("What Variable?\n");
         printf("    Available Variables:\n");
-        print_keys(metrics);
+        print_keys(variables);
 
         /*
          *  Free resources
          */
-        json_decref(metrics);
+        JSON_DECREF(variables);
         rstats_close(stats);
         return -1;
     }
 
-    json_t *jn_variable = kw_get_dict(metrics, variable, 0, 0);
+    json_t *jn_variable = kw_get_dict(variables, variable, 0, 0);
     if(!jn_variable) {
         printf("Variable \"%s\" not found\n", variable);
         printf("    Available Variables:\n");
-        print_keys(metrics);
+        print_keys(variables);
 
         /*
          *  Free resources
          */
-        json_decref(metrics);
+        JSON_DECREF(variables);
         rstats_close(stats);
         return -1;
     }
 
     json_t *metric = 0;
     if(!empty_string(units)) {
-        metric = find_metric_by_units(metrics, variable, units, FALSE);
+        metric = find_metric_by_units(variables, variable, units, FALSE);
         if(!metric) {
             printf("What Units?\n");
             printf("    Available Units:\n");
@@ -362,7 +362,7 @@ PRIVATE int _list_stats(
             /*
              *  Free resources
              */
-            json_decref(metrics);
+            JSON_DECREF(variables);
             rstats_close(stats);
             return -1;
         }
@@ -378,12 +378,12 @@ PRIVATE int _list_stats(
             /*
             *  Free resources
             */
-            json_decref(metrics);
+            JSON_DECREF(variables);
             rstats_close(stats);
             return -1;
         }
 
-        metric = rstats_metric(metrics, variable, metric_name, "", FALSE);
+        metric = rstats_metric(variables, variable, metric_name, "", FALSE);
         if(!metric) {
             printf("What Metric?\n");
             printf("    Available Metrics:\n");
@@ -392,7 +392,7 @@ PRIVATE int _list_stats(
             /*
              *  Free resources
              */
-            json_decref(metrics);
+            JSON_DECREF(variables);
             rstats_close(stats);
             return -1;
         }
@@ -406,7 +406,8 @@ PRIVATE int _list_stats(
         /*
          *  Free resources
          */
-        json_decref(metrics);
+        JSON_DECREF(metric);
+        JSON_DECREF(variables);
         rstats_close(stats);
         return -1;
     }
@@ -422,13 +423,14 @@ PRIVATE int _list_stats(
     json_t *jn_data = rstats_get_data(metric, from_t, to_t);
     if(jn_data) {
         print_json(jn_data);
-        json_decref(jn_data);
+        JSON_DECREF(jn_data);
     }
 
     /*
      *  Free resources
      */
-    json_decref(metrics);
+    JSON_DECREF(metric);
+    JSON_DECREF(variables);
     rstats_close(stats);
 
     return 0;
@@ -530,23 +532,6 @@ PRIVATE int list_stats(list_params_t *list_params)
             exit(-1);
         }
         build_path2(temp, sizeof(temp), list_params->path_simple_stats, list_params->arguments->group);
-    }
-
-    if(!empty_string(list_params->arguments->metric)) {
-        if(!subdir_exists(temp, list_params->arguments->metric)) {
-            fprintf(stderr, "Metric not found: '%s'\n\n", list_params->arguments->metric);
-            exit(-1);
-        }
-        snprintf(
-            temp + strlen(temp),
-            sizeof(temp) - strlen(temp),
-            "/%s/__metric__.json",
-            list_params->arguments->metric
-        );
-        if(!is_regular_file(temp)) {
-            fprintf(stderr, "Metric not found: '%s'\n\n", list_params->arguments->metric);
-            exit(-1);
-        }
     }
 
     return _list_stats(
@@ -664,6 +649,30 @@ int main(int argc, char *argv[])
 
     MEM_MAX_BLOCK = MIN(1*1024*1024*1024LL, MEM_MAX_BLOCK);  // 1*G max
 
+    BOOL debug = 0;
+    if(debug) {
+        #define MEM_MIN_BLOCK   512
+        #define MEM_SUPERBLOCK  209715200   // 200*M
+        static uint32_t mem_list[] = {
+            1012,
+            0
+        };
+        gbmem_trace_alloc_free(1, mem_list);
+        gbmem_startup(
+            MEM_MIN_BLOCK,
+            MEM_MAX_BLOCK,
+            MEM_SUPERBLOCK,
+            MEM_MAX_SYSTEM_MEMORY,
+            NULL,
+            0
+        );
+    } else {
+        gbmem_startup_system(
+            MEM_MAX_BLOCK,
+            MEM_MAX_SYSTEM_MEMORY
+        );
+    }
+
     gbmem_startup_system(
         MEM_MAX_BLOCK,
         MEM_MAX_SYSTEM_MEMORY
@@ -678,7 +687,7 @@ int main(int argc, char *argv[])
         VERSION,    // applicacion version
         NAME        // executable program, to can trace stack
     );
-    log_add_handler(NAME, "stdout", LOG_OPT_UP_WARNING, 0);
+    log_add_handler(NAME, "stdout", debug?LOG_OPT_ALL:LOG_OPT_UP_WARNING, 0);
 
     /*----------------------------------*
      *  Match conditions
