@@ -696,21 +696,19 @@ int main(int argc, char *argv[])
 
     if(arguments.from_t) {
         timestamp_t timestamp;
-        int offset;
         if(all_numbers(arguments.from_t)) {
             timestamp = atoll(arguments.from_t);
         } else {
-            parse_date_basic(arguments.from_t, &timestamp, &offset);
+            timestamp = approxidate(arguments.from_t);
         }
         json_object_set_new(match_cond, "from_t", json_integer(timestamp));
     }
     if(arguments.to_t) {
         timestamp_t timestamp;
-        int offset;
         if(all_numbers(arguments.to_t)) {
             timestamp = atoll(arguments.to_t);
         } else {
-            parse_date_basic(arguments.to_t, &timestamp, &offset);
+            timestamp = approxidate(arguments.to_t);
         }
         json_object_set_new(match_cond, "to_t", json_integer(timestamp));
     }
