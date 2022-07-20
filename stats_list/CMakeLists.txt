@@ -48,6 +48,7 @@ TARGET_LINK_LIBRARIES(stats_list
     /yuneta/development/output/lib/libuv.a
     /yuneta/development/output/lib/libjansson.a
     /yuneta/development/output/lib/libunwind.a
+    /yuneta/development/output/lib/libpcre2-posix.a
     /yuneta/development/output/lib/libpcre2-8.a
 
     pthread dl  # used by libuv
