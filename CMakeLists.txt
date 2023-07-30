@@ -1,8 +1,8 @@
 ##############################################
 #   CMake
 ##############################################
-project(stats C)
 cmake_minimum_required(VERSION 3.0)
+project(stats C)
 include(CheckIncludeFiles)
 include(CheckSymbolExists)
 
